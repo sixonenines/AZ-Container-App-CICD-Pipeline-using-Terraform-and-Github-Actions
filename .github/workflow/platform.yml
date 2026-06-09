@@ -1,0 +1,51 @@
+name: Build infrastructure
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Choose environment'
+        required: true
+        type: choice
+        options: [dev, test, prod]
+      action:
+        description: 'Choose action'
+        required: true
+        type: choice
+        options: [plan, apply] # Maybe force plan first and save resulting plan before allowing apply
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }} # consider requiring review for prod
+    defaults:
+      run:
+        working-directory: terraform/platform
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ var.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ var.AZURE_TENANT_ID }}
+    permissions:
+      id-token: write # Required for OIDC authentication
+      contents: read # Required to read the repository contents (e.g., for checkout)
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Terraform Init # | is YAMLs multiline string operator, I can also use it in combination with shell line continuation \
+      # I require backend-config values fo init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RG }}" \
+            -backend-config="storage_account_namem=${{ vars.TF_BACKEND_SA }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key={{inputs.environment}}.terraform.tfstate"
+
+      - name: Terraform Plan
+        if: ${{ inputs.action == 'plan' }} # Use vars from env folder.
+        run: terraform plan -out=tfplan -var-file="env/${{ inputs.environment }}.tfvars"
+
+      - name: Terraform Apply
+        if: ${{ inputs.action == 'apply' }}
+        run: terraform apply -auto-approve tfplan
