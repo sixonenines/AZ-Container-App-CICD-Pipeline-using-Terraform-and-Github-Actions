@@ -25,6 +25,18 @@ provider "azurerm" {
 # exposes attributes of the current client configuration.
 data "azurerm_client_config" "current" {}
 
-data "azurerm_resource_group" "env" { #env or this
+data "azurerm_resource_group" "rg" { 
   name = var.resource_group_name
+}
+
+resource "azurerm_virtual_network" "workingcicd" {
+  name                = "vnet-${data.azurerm_resource_group.rg.name}"
+  resource_group_name = data.azurerm_resource_group.rg.name
+  location            = data.azurerm_resource_group.rg.location
+  address_space       = ["192.168.0.0/16"]
+
+  tags = {
+    purpose     = "Proof of concept"
+    provisioned = "terraform"
+  }
 }

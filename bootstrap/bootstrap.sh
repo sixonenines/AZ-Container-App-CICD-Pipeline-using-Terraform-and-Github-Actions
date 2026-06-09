@@ -96,6 +96,7 @@ for ENV in "${ENVIRONMENTS[@]}"; do
 
   gh variable set AZURE_CLIENT_ID       --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$MI_CLIENT_ID"
   gh variable set AZURE_TENANT_ID       --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$TENANT_ID"
+  gh variable set RESOURCE_GROUP_NAME   --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$ENV_RG"   # Consumed by Terraform via TF_VAR_resource_group_name
   gh secret set AZURE_SUBSCRIPTION_ID --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$SUBSCRIPTION_ID" # Microsoft recommends to not keep the subscription id public
 done
 

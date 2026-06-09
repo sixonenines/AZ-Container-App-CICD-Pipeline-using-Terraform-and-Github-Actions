@@ -11,7 +11,8 @@ on:
         description: 'Choose action'
         required: true
         type: choice
-        options: [plan, apply] # Maybe force plan first and save resulting plan before allowing apply
+        options: [plan, apply, destroy] # Maybe force plan first and save resulting plan before allowing apply
+        # Definitely lock destroy
 jobs:
   terraform:
     runs-on: ubuntu-latest
@@ -21,8 +22,9 @@ jobs:
         working-directory: terraform/platform
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      ARM_CLIENT_ID: ${{ var.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ var.AZURE_TENANT_ID }}
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
     permissions:
       id-token: write # Required for OIDC authentication
       contents: read # Required to read the repository contents (e.g., for checkout)
@@ -38,9 +40,9 @@ jobs:
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.TF_BACKEND_RG }}" \
-            -backend-config="storage_account_namem=${{ vars.TF_BACKEND_SA }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_SA }}" \
             -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
-            -backend-config="key={{inputs.environment}}.terraform.tfstate"
+            -backend-config="key=${{inputs.environment}}.terraform.tfstate"
 
       - name: Terraform Plan
         if: ${{ inputs.action == 'plan' }} # Use vars from env folder.
@@ -49,3 +51,7 @@ jobs:
       - name: Terraform Apply
         if: ${{ inputs.action == 'apply' }}
         run: terraform apply -auto-approve tfplan
+
+      - name: Terraform Destroy
+        if: ${{ inputs.action == 'destroy' }}
+        run: terraform destroy -auto-approve -var-file="env/${{ inputs.environment }}.tfvars"
