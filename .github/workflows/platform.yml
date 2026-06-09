@@ -50,7 +50,7 @@ jobs:
 
       - name: Terraform Apply
         if: ${{ inputs.action == 'apply' }}
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -auto-approve -var-file="env/${{ inputs.environment }}.tfvars"
 
       - name: Terraform Destroy
         if: ${{ inputs.action == 'destroy' }}

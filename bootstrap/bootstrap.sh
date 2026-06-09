@@ -18,7 +18,7 @@ az account set --subscription "$SUBSCRIPTION_ID"
 # Create a RG for the storage account
 az group create --name "$RG_STATESTORAGE" --location "$LOCATION"
 
-## Handle unavailable account names
+## Todo: Handle unavailable account names
 az storage account check-name --name "$STORAGE_ACCOUNT_NAME"
 
 az storage account create \
@@ -93,6 +93,9 @@ for ENV in "${ENVIRONMENTS[@]}"; do
   --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Contributor" \
   --scope "$CONTAINER_SCOPE"
+
+  # GitHub environment must exist before setting env-scoped vars/secrets (gh won't auto-create it)
+  gh api -X PUT "repos/${GITHUB_REPO_FULL}/environments/${ENV}" >/dev/null
 
   gh variable set AZURE_CLIENT_ID       --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$MI_CLIENT_ID"
   gh variable set AZURE_TENANT_ID       --env "$ENV" --repo "$GITHUB_REPO_FULL" --body "$TENANT_ID"
