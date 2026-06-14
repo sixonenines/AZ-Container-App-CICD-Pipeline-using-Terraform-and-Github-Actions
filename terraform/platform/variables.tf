@@ -1,4 +1,15 @@
 variable "resource_group_name" {
-  description = "Name of the pre-existing resource group for this environment (created by bootstrap as <RG_NAME>-<env>)."
+  description = "Name of the pre-existing resource group for this environment (created by bootstrap as <resource-group-base-name>-<env>)."
   type        = string
+}
+
+variable "environment" {
+  description = "Deployment environment (dev/test/prod). Suffixed onto resource names so each env is independently named."
+  type        = string
+}
+
+variable "workload" {
+  description = "Short, lowercase, alphanumeric workload name used as the middle segment of every resource name (<abbrev>-<workload>-<env>)."
+  type        = string
+  default     = "webapp"
 }

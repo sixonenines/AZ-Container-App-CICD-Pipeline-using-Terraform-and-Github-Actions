@@ -1,4 +1,6 @@
-name: Deploy platform
+# Basically a copy of platform.yml, adapt this for application deployment.
+
+name: Deploy app
 on:
   workflow_dispatch:
     inputs:
@@ -19,13 +21,17 @@ jobs:
     environment: ${{ inputs.environment }} # consider requiring review for prod
     defaults:
       run:
-        working-directory: terraform/platform
+        working-directory: terraform/app
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
       TF_VAR_environment: ${{ inputs.environment }}
+      # Passed so the terraform_remote_state data source can read the platform project's outputs.
+      TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
+      TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
+      TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
     permissions:
       id-token: write # Required for OIDC authentication
       contents: read # Required to read the repository contents (e.g., for checkout)
@@ -43,7 +49,7 @@ jobs:
             -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
             -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
             -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
-            -backend-config="key=platform.${{inputs.environment}}.terraform.tfstate"
+            -backend-config="key=app.${{inputs.environment}}.terraform.tfstate"
 
       - name: Terraform Plan  # Plan/Apply/Destroy are all shown in Jobs, maybe restructure it. Also consider requiring plan for apply and saving the output as an artifact.
         if: ${{ inputs.action == 'plan' }} # Use vars from env folder.
