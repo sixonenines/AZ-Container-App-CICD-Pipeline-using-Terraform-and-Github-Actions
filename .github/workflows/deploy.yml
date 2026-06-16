@@ -1,0 +1,114 @@
+# Build the application image and roll it out to the Container App.
+# On merge to main: build + push the image to ACR (tagged with the commit SHA),
+# then run the app Terraform with that immutable tag so the Container App is
+# updated through Terraform (no drift) and a fresh revision is actually created.
+name: Build and deploy app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Choose environment'
+        required: true
+        type: choice
+        options: [dev, test, prod]
+
+# On merge to main we auto-deploy to dev. Promote to test/prod via the manual
+# workflow_dispatch run (and gate those GitHub Environments with required reviewers).
+env:
+  IMAGE_REPO: webapp # must match TF_VAR_project so the image path lines up
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    permissions:
+      id-token: write # OIDC login to Azure
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      # The ACR name carries a random suffix, so discover it from the resource
+      # group rather than hardcoding it.
+      - name: Discover ACR name
+        id: acr
+        run: |
+          ACR_NAME=$(az acr list \
+            --resource-group "${{ vars.RESOURCE_GROUP_NAME }}" \
+            --query "[0].name" -o tsv)
+          if [ -z "$ACR_NAME" ]; then
+            echo "::error::No ACR found in resource group ${{ vars.RESOURCE_GROUP_NAME }}"
+            exit 1
+          fi
+          echo "name=$ACR_NAME" >> "$GITHUB_OUTPUT"
+
+      # Server-side build in ACR Tasks: no local docker/buildx, and it only needs
+      # management-plane rights (which the subscription-scoped SP already has),
+      # so no AcrPush data-plane role is required.
+      - name: Build and push image
+        run: |
+          az acr build \
+            --registry "${{ steps.acr.outputs.name }}" \
+            --image "${IMAGE_REPO}:${{ steps.meta.outputs.image_tag }}" \
+            --image "${IMAGE_REPO}:latest" \
+            ./app
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    defaults:
+      run:
+        working-directory: infra/app
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
+      TF_VAR_environment: ${{ inputs.environment || 'dev' }}
+      TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
+      TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
+      TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
+      # Deploy the exact image we just pushed. Immutable tag => Terraform sees a
+      # changed image string => a new Container App revision is rolled out.
+      TF_VAR_project: webapp
+      TF_VAR_image_tag: ${{ needs.build-push.outputs.image_tag }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=app.${{ inputs.environment || 'dev' }}.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var-file="env/${{ inputs.environment || 'dev' }}.tfvars"

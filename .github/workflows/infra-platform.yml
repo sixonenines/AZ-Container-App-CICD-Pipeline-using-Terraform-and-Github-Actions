@@ -1,4 +1,4 @@
-name: Deploy platform
+name: Infra - platform
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ jobs:
     environment: ${{ inputs.environment }} # consider requiring review for prod
     defaults:
       run:
-        working-directory: terraform/platform
+        working-directory: infra/platform
     env:
       ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
