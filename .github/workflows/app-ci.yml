@@ -1,0 +1,25 @@
+# PR gate for application code: builds the container image (without pushing) so a
+# broken Dockerfile or app can't be merged. Pure Docker build — no Azure, no
+# secrets — so it runs reliably on every PR (including from forks) regardless of
+# whether the cloud infrastructure is currently provisioned.
+name: App CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: app-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Build app image (no push)
+        run: docker build -t webapp:ci ./app
