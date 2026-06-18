@@ -1,0 +1,89 @@
+# Promote an already-built image to test or prod — no rebuild.
+# Resolves the immutable digest for a given commit from the shared ACR and applies
+# the app stack pinned to it, so the promoted environment runs the bit-for-bit
+# image that was built on merge and deployed to dev. The prod GitHub Environment is
+# gated by a required reviewer, so promoting to prod pauses for manual approval.
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [test, prod]
+      commit_sha:
+        description: 'Commit SHA to promote (the one that was built on merge to main)'
+        required: true
+        type: string
+
+env:
+  IMAGE_REPO: webapp
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }} # prod is gated by a required reviewer
+    defaults:
+      run:
+        working-directory: infra/app
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
+      TF_VAR_environment: ${{ inputs.environment }}
+      TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
+      TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
+      TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
+      TF_VAR_project: webapp
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # Resolve the digest for the requested commit from the shared ACR. If that
+      # commit was never built, there is no image to promote — fail fast rather
+      # than deploy something stale.
+      - name: Resolve image digest
+        id: resolve
+        run: |
+          TAG="${COMMIT_SHA::12}"
+          DIGEST="$(az acr repository show \
+            --name '${{ vars.SHARED_ACR_NAME }}' \
+            --image "${IMAGE_REPO}:${TAG}" \
+            --query digest -o tsv 2>/dev/null || true)"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::No image ${IMAGE_REPO}:${TAG} in ${{ vars.SHARED_ACR_NAME }}. Has commit ${COMMIT_SHA} been built on main?"
+            exit 1
+          fi
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Promoting ${IMAGE_REPO}:${TAG} ($DIGEST) to ${{ inputs.environment }}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=app.${{ inputs.environment }}.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var-file="env/${{ inputs.environment }}.tfvars"
+        env:
+          TF_VAR_image_digest: ${{ steps.resolve.outputs.image_digest }}

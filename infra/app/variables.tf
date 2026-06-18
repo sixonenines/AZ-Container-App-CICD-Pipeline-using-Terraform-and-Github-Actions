@@ -34,15 +34,19 @@ variable "tf_backend_container_name" {
 # --- Container app runtime configuration ---
 
 variable "project" {
-  description = "Image repository name in ACR and the container name (<acr-login-server>/<project>:<image_tag>)."
+  description = "Image repository name in ACR and the container name (<acr-login-server>/<project>@<image_digest>)."
   type        = string
   default     = "webapp"
 }
 
-variable "image_tag" {
-  description = "Tag of the image to deploy from ACR."
+variable "image_digest" {
+  description = "Immutable digest of the image to deploy, e.g. sha256:abc123... Deploying by digest (not a tag) guarantees the exact bytes built and tested are what runs. Supplied by the build/promote workflows."
   type        = string
-  default     = "latest"
+
+  validation {
+    condition     = can(regex("^sha256:[0-9a-f]{64}$", var.image_digest))
+    error_message = "image_digest must be a full image digest of the form sha256:<64 hex chars>."
+  }
 }
 
 variable "cpu" {

@@ -4,10 +4,6 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "=4.1"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
@@ -36,11 +32,12 @@ locals {
   name_suffix = "${var.workload}-${var.environment}"
 }
 
-
-resource "random_string" "acr" {
-  length  = 6
-  special = false
-  upper   = false
+# The runtime identity the Container App uses to pull images. Created by
+# bootstrap.sh (which also grants it AcrPull on the shared registry); read here by
+# name so this stack needs no rights over the shared registry's access control.
+data "azurerm_user_assigned_identity" "uami" {
+  name                = "id-${local.name_suffix}"
+  resource_group_name = data.azurerm_resource_group.rg.name
 }
 
 resource "azurerm_log_analytics_workspace" "law" {
@@ -58,23 +55,3 @@ resource "azurerm_container_app_environment" "cae" {
   log_analytics_workspace_id = azurerm_log_analytics_workspace.law.id
 }
 
-resource "azurerm_container_registry" "acr" {
-  name                = "cr${var.workload}${var.environment}${random_string.acr.result}" # globally unique
-  resource_group_name = data.azurerm_resource_group.rg.name
-  location            = data.azurerm_resource_group.rg.location
-  sku                 = "Standard"
-  admin_enabled       = false
-}
-
-resource "azurerm_user_assigned_identity" "uami" {
-  location            = data.azurerm_resource_group.rg.location
-  name                = "id-${local.name_suffix}"
-  resource_group_name = data.azurerm_resource_group.rg.name
-}
-
-resource "azurerm_role_assignment" "acr_pull" {
-  scope                            = azurerm_container_registry.acr.id
-  role_definition_name             = "AcrPull"
-  principal_id                     = azurerm_user_assigned_identity.uami.principal_id
-  skip_service_principal_aad_check = true # Entra might lag behind in recognising new identity, maybe there is a better solution
-}

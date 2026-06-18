@@ -11,8 +11,6 @@ plan.txt
 *.tfstate.*
 crash.log
 crash.*.log
-# Keep .terraform.lock.hcl committed for reproducible provider versions.
-
 # Logs
 *.log
 

@@ -26,6 +26,8 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
       TF_VAR_environment: ${{ inputs.environment }}
+      # The platform stack derives the shared ACR login server from this name.
+      TF_VAR_tf_shared_acr_name: ${{ vars.SHARED_ACR_NAME }}
     permissions:
       id-token: write # Required for OIDC authentication
       contents: read # Required to read the repository contents (e.g., for checkout)

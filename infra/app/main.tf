@@ -55,7 +55,7 @@ resource "azurerm_container_app" "ca" {
 
     container {
       name   = var.project
-      image  = "${local.platform.container_registry_login_server}/${var.project}:${var.image_tag}"
+      image  = "${local.platform.container_registry_login_server}/${var.project}@${var.image_digest}"
       cpu    = var.cpu
       memory = var.memory
     }

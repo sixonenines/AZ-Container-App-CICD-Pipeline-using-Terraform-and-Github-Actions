@@ -1,0 +1,113 @@
+# Build the application image ONCE and deploy it to dev.
+# On merge to main: a dedicated least-privilege "build" identity builds the image
+# and pushes it to the single shared ACR, capturing the immutable digest. The dev
+# identity then applies the app stack pinned to that digest. The same digest is
+# later promoted to test/prod by promote.yml (no rebuild)
+name: Build and deploy (dev)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+      - '.github/workflows/build-deploy.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: build-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: webapp # must match TF_VAR_project so the image path lines up
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: build # Uses dedicated build identity with just enough permissions to build and push to ACR
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_digest: ${{ steps.push.outputs.image_digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Resolve image tag
+        id: meta
+        run: echo "tag=${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - name: Registry login
+        run: az acr login --name "${{ vars.SHARED_ACR_NAME }}"
+
+      - name: Build and push image
+        id: push
+        run: |
+          LOGIN_SERVER="$(az acr show \
+            --name '${{ vars.SHARED_ACR_NAME }}' \
+            --resource-group '${{ vars.SHARED_RESOURCE_GROUP }}' \
+            --query loginServer -o tsv)"
+          IMAGE="${LOGIN_SERVER}/${IMAGE_REPO}:${{ steps.meta.outputs.tag }}"
+
+          docker build -t "$IMAGE" ./app
+          docker push "$IMAGE"
+
+          # The registry digest is the immutable content address we deploy by.
+          DIGEST="$(az acr repository show \
+            --name '${{ vars.SHARED_ACR_NAME }}' \
+            --image "${IMAGE_REPO}:${{ steps.meta.outputs.tag }}" \
+            --query digest -o tsv)"
+          if [ -z "$DIGEST" ]; then
+            echo "::error::Could not resolve digest for ${IMAGE_REPO}:${{ steps.meta.outputs.tag }}"
+            exit 1
+          fi
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${IMAGE} ($DIGEST)" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: infra/app
+    env:
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
+      TF_VAR_environment: dev
+      TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
+      TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
+      TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
+      TF_VAR_project: webapp
+      # Deploy the exact image we just built. Immutable digest => Terraform sees a
+      # changed image string => a new Container App revision is rolled out.
+      TF_VAR_image_digest: ${{ needs.build.outputs.image_digest }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=${{ vars.TF_BACKEND_CONTAINER }}" \
+            -backend-config="key=app.dev.terraform.tfstate"
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var-file="env/dev.tfvars"

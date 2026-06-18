@@ -1,4 +1,4 @@
-# Manages the Container App *infrastructure* (ingress, scaling, identity, etc.).
+# Manages the Container App infrastructure
 # This workflow only plans or destroys - it deliberately does NOT apply.
 # Image rollouts and the corresponding `terraform apply` are owned by deploy.yml,
 # so there is a single applier of the app state and no image_tag drift.
@@ -19,7 +19,7 @@ on:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }} # consider requiring review for prod
+    environment: ${{ inputs.environment }}
     defaults:
       run:
         working-directory: infra/app
@@ -33,8 +33,11 @@ jobs:
       TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
       TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
+      # This workflow only plans/destroys and never deploys a real image, so pass a
+      # syntactically valid placeholder digest to satisfy the app stack's variable.
+      TF_VAR_image_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     permissions:
-      id-token: write # Required for OIDC authentication
+      id-token: write
       contents: read # Required to read the repository contents (e.g., for checkout)
     steps:
       - name: Checkout code
@@ -44,7 +47,7 @@ jobs:
         uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init # | is YAMLs multiline string operator, I can also use it in combination with shell line continuation \
-      # I require backend-config values fo init
+      # I require backend-config values for init
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.TF_BACKEND_RESOURCE_GROUP }}" \

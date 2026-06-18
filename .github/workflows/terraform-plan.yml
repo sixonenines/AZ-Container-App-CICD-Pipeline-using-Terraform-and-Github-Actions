@@ -10,7 +10,6 @@ on:
       - 'infra/**'
       - '.github/workflows/terraform-plan.yml'
 
-# Allow only one in-flight plan per PR; newer pushes cancel older runs.
 concurrency:
   group: tf-plan-${{ github.ref }}
   cancel-in-progress: true
@@ -32,12 +31,17 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
       TF_VAR_environment: dev
-      # Only consumed by the app stack; the platform stack ignores undeclared TF_VARs.
+      # Consumed by the platform stack (derives the shared ACR login server).
+      TF_VAR_tf_shared_acr_name: ${{ vars.SHARED_ACR_NAME }}
+      # Only consumed by the app stack; each stack ignores undeclared TF_VARs.
       TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
       TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}
       TF_VAR_tf_backend_container_name: ${{ vars.TF_BACKEND_CONTAINER }}
+      # The app stack requires a digest; no image is built on a PR, so pass a
+      # syntactically valid placeholder purely so `terraform plan` can run.
+      TF_VAR_image_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
     permissions:
-      id-token: write # OIDC login to Azure
+      id-token: write
       contents: read
     steps:
       - name: Checkout code
