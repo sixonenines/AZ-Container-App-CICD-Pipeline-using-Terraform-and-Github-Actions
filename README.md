@@ -238,7 +238,8 @@ locators are **repo-level**:
 | `RESOURCE_GROUP_NAME` | env | var | Per-env resource group |
 | `TF_BACKEND_CONTAINER` | env | var | Per-env Terraform state container |
 | `TF_BACKEND_RESOURCE_GROUP` / `_STORAGE_ACCOUNT` | repo | var | Remote state backend |
-| `SHARED_ACR_NAME` / `SHARED_RESOURCE_GROUP` | repo | var | Locate the shared registry (build/promote + platform stack) |
+| `SHARED_ACR_NAME` | repo | var | Shared registry name (build/promote data-plane commands) |
+| `SHARED_ACR_LOGIN_SERVER` | repo | var | Shared registry login server (image reference + platform stack output) |
 
 Per-environment Terraform inputs live in `infra/<stack>/env/<env>.tfvars`.
 

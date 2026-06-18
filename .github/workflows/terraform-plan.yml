@@ -31,8 +31,8 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       TF_VAR_resource_group_name: ${{ vars.RESOURCE_GROUP_NAME }}
       TF_VAR_environment: dev
-      # Consumed by the platform stack (derives the shared ACR login server).
-      TF_VAR_tf_shared_acr_name: ${{ vars.SHARED_ACR_NAME }}
+      # Consumed by the platform stack (its registry login-server output).
+      TF_VAR_tf_shared_acr_login_server: ${{ vars.SHARED_ACR_LOGIN_SERVER }}
       # Only consumed by the app stack; each stack ignores undeclared TF_VARs.
       TF_VAR_tf_backend_resource_group_name: ${{ vars.TF_BACKEND_RESOURCE_GROUP }}
       TF_VAR_tf_backend_storage_account_name: ${{ vars.TF_BACKEND_STORAGE_ACCOUNT }}

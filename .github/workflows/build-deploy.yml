@@ -50,10 +50,9 @@ jobs:
       - name: Build and push image
         id: push
         run: |
-          LOGIN_SERVER="$(az acr show \
-            --name '${{ vars.SHARED_ACR_NAME }}' \
-            --resource-group '${{ vars.SHARED_RESOURCE_GROUP }}' \
-            --query loginServer -o tsv)"
+          # Login server is published by bootstrap (resolved with full rights), so the
+          # AcrPush-only build identity needs no management-plane read on the registry.
+          LOGIN_SERVER="${{ vars.SHARED_ACR_LOGIN_SERVER }}"
           IMAGE="${LOGIN_SERVER}/${IMAGE_REPO}:${{ steps.meta.outputs.tag }}"
 
           docker build -t "$IMAGE" ./app

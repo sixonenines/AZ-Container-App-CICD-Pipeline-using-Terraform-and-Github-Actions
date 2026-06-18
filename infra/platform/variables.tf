@@ -14,10 +14,10 @@ variable "workload" {
   default     = "webapp"
 }
 
-# Name of the shared registry (created by bootstrap.sh), used to derive the login
-# server the app pulls from. Supplied by the workflows as TF_VAR_tf_shared_acr_name
-# from the SHARED_ACR_NAME GitHub variable.
-variable "tf_shared_acr_name" {
-  description = "Name of the shared Azure Container Registry."
+# Login server of the shared registry the app pulls from, resolved and published by
+# bootstrap.sh and supplied by the workflows as TF_VAR_tf_shared_acr_login_server
+# from the SHARED_ACR_LOGIN_SERVER GitHub variable.
+variable "tf_shared_acr_login_server" {
+  description = "Login server of the shared Azure Container Registry (e.g. <name>.azurecr.io)."
   type        = string
 }

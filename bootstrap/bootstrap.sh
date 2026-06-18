@@ -78,6 +78,10 @@ if [ -z "$SHARED_ACR_NAME" ]; then
     --admin-enabled false
 fi
 ACR_ID=$(az acr show --name "$SHARED_ACR_NAME" --resource-group "$SHARED_RESOURCE_GROUP" --query id -o tsv)
+# Resolve the login server here (bootstrap has full rights) and publish it as a
+# variable, so the AcrPush-only build identity and the Terraform stacks never need
+# a management-plane read on the registry — and we don't hardcode <name>.azurecr.io.
+SHARED_ACR_LOGIN_SERVER=$(az acr show --name "$SHARED_ACR_NAME" --resource-group "$SHARED_RESOURCE_GROUP" --query loginServer -o tsv)
 
 # Dedicated build identity — granted ONLY AcrPush, so it can push images and
 # nothing else. Distinct from the per-env deploy identities, which can only pull.
@@ -113,8 +117,9 @@ gh variable set AZURE_TENANT_ID       --env build --repo "$GITHUB_REPO_FULL" --b
 gh secret   set AZURE_SUBSCRIPTION_ID --env build --repo "$GITHUB_REPO_FULL" --body "$SUBSCRIPTION_ID"
 
 # Repo-level vars so every workflow and Terraform stack can locate the shared registry.
-gh variable set SHARED_ACR_NAME       --repo "$GITHUB_REPO_FULL" --body "$SHARED_ACR_NAME"
-gh variable set SHARED_RESOURCE_GROUP --repo "$GITHUB_REPO_FULL" --body "$SHARED_RESOURCE_GROUP"
+gh variable set SHARED_ACR_NAME          --repo "$GITHUB_REPO_FULL" --body "$SHARED_ACR_NAME"
+gh variable set SHARED_RESOURCE_GROUP    --repo "$GITHUB_REPO_FULL" --body "$SHARED_RESOURCE_GROUP"
+gh variable set SHARED_ACR_LOGIN_SERVER  --repo "$GITHUB_REPO_FULL" --body "$SHARED_ACR_LOGIN_SERVER"
 
 
 # Each environment gets its own RG + managed identity + OIDC + per-env state container + scoped roles
