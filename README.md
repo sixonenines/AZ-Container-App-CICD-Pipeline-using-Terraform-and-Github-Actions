@@ -224,6 +224,37 @@ Environment) so production promotions require an approval click.
 
 ---
 
+## Making changes
+
+`main` is protected: direct pushes are blocked, changes go through a **pull
+request**, and the `build` status check (from `app-ci`) must pass before merge. So
+the flow for any change is branch → push → PR → merge:
+
+```bash
+git switch -c newBranchName          # branch off main
+# ...edit your files...
+git add changedOrNewFile                        # stage the changes
+git commit -m "Describe the change"
+git push -u origin newBranchName     # push the branch
+gh pr create --fill              # open the PR (or use GitHub's "Compare & pull request")
+```
+
+Opening the PR runs the gates automatically:
+
+- **`app-ci`** builds the app image (the required `build` check), and
+- **`terraform-plan`** posts a `plan` for any `infra/**` changes so the diff is
+  reviewable before merge.
+
+Once the checks are green, **merge the PR**. Merging changes under `app/**` then
+triggers `build-deploy` (build + deploy to dev); promote onward to test/prod with
+`promote`. Afterwards, sync your local branch:
+
+```bash
+git switch main && git pull
+```
+
+---
+
 ## Configuration
 
 Workflows read these from GitHub variables/secrets (set by bootstrap). Most are
